@@ -1,15 +1,16 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"flag"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"strconv"
+	"os/signal"
+	"sync"
 
 	"github.com/BurntSushi/toml"
+	"github.com/Shopify/sarama"
 	"github.com/mathpl/kafka_httpcat"
 )
 
@@ -27,6 +28,19 @@ type Config struct {
 
 	//HTTP method to use
 	Method string
+
+	//Expected http response deoces
+	ExpectedResponses []int
+
+	//Broker
+	BrokerList []string
+
+	//Topic
+	Topic string
+
+	Partitions []int32
+	Offset     string
+	BufferSize int
 }
 
 func readConf(filename string) (conf *Config) {
@@ -36,7 +50,7 @@ func readConf(filename string) (conf *Config) {
 	}
 	defer f.Close()
 
-	conf = &Config{}
+	conf = &Config{Offset: "newest", BufferSize: 64}
 
 	md, err := toml.DecodeReader(f, conf)
 	if err != nil {
@@ -49,33 +63,97 @@ func readConf(filename string) (conf *Config) {
 	return
 }
 
+func getPartitions(conf *Config, c sarama.Consumer) ([]int32, error) {
+	if len(conf.Partitions) == 0 {
+		return c.Partitions(conf.Topic)
+	}
+
+	return conf.Partitions, nil
+}
+
 func main() {
 	flag.Parse()
 	conf := readConf(*flagConf)
 
-	sender := kafka_httpcat.NewHTTPSender(conf.Hosts, conf.ContextPath, conf.Method, conf.Headers)
-
-	r := bufio.NewReader(os.Stdin)
-	for {
-		if payload_size_msg, err := r.ReadBytes(10); err == nil {
-			if payload_size, err := strconv.ParseInt(string(payload_size_msg[0:len(payload_size_msg)-1]), 10, 32); err == nil {
-				//	gzreader, err := gzip.NewReader(io.LimitReader(r, payload_size))
-				//	if err != nil {
-				//		log.Fatal("Unable to uncompress payload")
-				//	}
-				//	gzreader.Multistream(false)
-
-				if err := sender.RRSend(ioutil.NopCloser(io.LimitReader(r, payload_size))); err != nil {
-					log.Printf("%s", err)
-				}
-			} else {
-				log.Printf("Unable to parse payload size: %s", err)
-			}
-		} else if err == io.EOF {
-			log.Printf("STDIN closed, stopping.")
-			break
-		} else {
-			log.Printf("Unable to find delimiter: %s", err)
-		}
+	var initialOffset int64
+	switch conf.Offset {
+	case "oldest":
+		initialOffset = sarama.OffsetOldest
+	case "newest":
+		initialOffset = sarama.OffsetNewest
+	default:
+		log.Fatal("offset should be `oldest` or `newest`")
 	}
+
+	c, err := sarama.NewConsumer(conf.BrokerList, nil)
+	if err != nil {
+		log.Fatalf("Failed to start consumer: %s", err)
+	}
+
+	partitionList, err := getPartitions(conf, c)
+	if err != nil {
+		log.Fatalf("Failed to get the list of partitions: %s", err)
+	}
+
+	var (
+		messages = make(chan *sarama.ConsumerMessage, conf.BufferSize)
+		closing  = make(chan struct{})
+		wg       sync.WaitGroup
+	)
+
+	go func() {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, os.Kill, os.Interrupt)
+		<-signals
+		log.Println("Initiating shutdown of consumer...")
+		close(closing)
+	}()
+
+	for _, partition := range partitionList {
+		pc, err := c.ConsumePartition(conf.Topic, partition, initialOffset)
+		if err != nil {
+			log.Fatalf("Failed to start consumer for partition %d: %s", partition, err)
+		}
+
+		go func(pc sarama.PartitionConsumer) {
+			<-closing
+			pc.AsyncClose()
+		}(pc)
+
+		wg.Add(1)
+		go func(pc sarama.PartitionConsumer) {
+			defer wg.Done()
+			for message := range pc.Messages() {
+				messages <- message
+			}
+		}(pc)
+	}
+
+	go func() {
+		for msg := range messages {
+			//fmt.Printf("Partition:\t%d\n", msg.Partition)
+			//fmt.Printf("Offset:\t%d\n", msg.Offset)
+			//fmt.Printf("Key:\t%s\n", string(msg.Key))
+			//fmt.Printf("Value:\t%s\n", string(msg.Value))
+			//fmt.Println()
+			sender := kafka_httpcat.NewHTTPSender(conf.Hosts, conf.ContextPath, conf.Method, conf.Headers, conf.ExpectedResponses)
+			for {
+				msg_reader := bytes.NewReader(msg.Value)
+				if err := sender.RRSend(ioutil.NopCloser(msg_reader)); err != nil {
+					log.Printf("Error send data: %s", err)
+				} else {
+					break
+				}
+			}
+		}
+	}()
+
+	wg.Wait()
+	log.Println("Done consuming topic", conf.Topic)
+	close(messages)
+
+	if err := c.Close(); err != nil {
+		log.Println("Failed to close consumer: ", err)
+	}
+
 }

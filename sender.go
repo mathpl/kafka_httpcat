@@ -1,6 +1,8 @@
 package kafka_httpcat
 
 import (
+	"compress/gzip"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -16,11 +18,12 @@ type HTTPSender struct {
 	parsedContextPath *url.URL
 	headers           map[string][]string
 	currentHost       int
+	expectedRespCodes map[int]bool
 
 	client *http.Client
 }
 
-func NewHTTPSender(hosts []string, contextPath string, method string, headers map[string][]string) *HTTPSender {
+func NewHTTPSender(hosts []string, contextPath string, method string, headers map[string][]string, expectedRespCodes []int) *HTTPSender {
 	//Random host
 	if len(hosts) == 0 {
 		log.Fatal("Need at least one host defined.")
@@ -30,7 +33,13 @@ func NewHTTPSender(hosts []string, contextPath string, method string, headers ma
 		log.Fatalf("Unable to parse context path: %s", err)
 		return nil
 	} else {
-		return &HTTPSender{hosts: hosts, contextPath: contextPath, headers: headers, parsedContextPath: u, currentHost: cur, client: &http.Client{}}
+		u.Scheme = "http"
+		respMap := make(map[int]bool)
+		for _, expectedRespCode := range expectedRespCodes {
+			respMap[expectedRespCode] = true
+		}
+		return &HTTPSender{hosts: hosts, contextPath: contextPath, method: method, headers: headers,
+			parsedContextPath: u, expectedRespCodes: respMap, currentHost: cur, client: &http.Client{}}
 	}
 }
 
@@ -41,9 +50,7 @@ func (h *HTTPSender) buildBaseRequest(contextPath string, method string, headers
 	req.ProtoMinor = 1
 	req.Close = false
 	req.Header = h.headers
-	//req.TransferEncoding = []string{"chunked"}
 	req.URL = h.parsedContextPath
-	req.URL.Scheme = "http"
 	req.URL.Host = h.hosts[h.currentHost]
 	req.Body = bodyReader
 	return &req
@@ -55,7 +62,9 @@ func (h *HTTPSender) send(bodyReader io.ReadCloser) error {
 		log.Printf("inot sent!: %s", err)
 		return err
 	} else {
-		log.Printf("resp: %s", resp)
+		if _, ok := h.expectedRespCodes[resp.StatusCode]; !ok {
+			return fmt.Errorf("Unexpected http code: %d", resp.StatusCode)
+		}
 	}
 
 	return nil
@@ -63,8 +72,13 @@ func (h *HTTPSender) send(bodyReader io.ReadCloser) error {
 
 func (h *HTTPSender) RRSend(bodyReader io.ReadCloser) error {
 	retries := 0
+	gzreader, err := gzip.NewReader(bodyReader)
+	if err != nil {
+		log.Fatal("Unable to uncompress payload")
+	}
+
 	for {
-		if err := h.send(bodyReader); err != nil {
+		if err := h.send(gzreader); err != nil {
 			//Round robin
 			h.currentHost = (h.currentHost + 1) % len(h.hosts)
 
@@ -73,6 +87,7 @@ func (h *HTTPSender) RRSend(bodyReader io.ReadCloser) error {
 				time.Sleep(time.Second)
 			}
 		} else {
+			gzreader.Reset(bodyReader)
 			return nil
 		}
 	}
