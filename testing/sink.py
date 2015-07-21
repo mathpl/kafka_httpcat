@@ -10,10 +10,10 @@ from zlib import decompress
 def opentsdb_sink():
     if 'Content-Type' in request.headers and request.headers['Content-Type'] == 'gzip':
         body = request.body.getvalue()
-        #if len(body) > 0:
-        ##print decompress(body, 15 + 32)
-        #else:
-        #    print "Empty message"
+        if len(body) > 0:
+            print decompress(body, 15 + 32)
+        else:
+            print "Empty message"
     else:
         print request.body.getvalue()
 

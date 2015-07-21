@@ -47,6 +47,9 @@ type Config struct {
 
 	//PayloadSize sent between each Kafka commit
 	OffsetCommitSize int
+
+	//OpentsdbReport
+	MetricsReport string
 }
 
 func readConf(filename string) (conf *Config) {
@@ -63,7 +66,7 @@ func readConf(filename string) (conf *Config) {
 
 	cid := fmt.Sprintf("%s-%d", host, os.Getpid())
 
-	conf = &Config{StartOffset: "newest", BufferSize: 16, ConsumerID: cid, OffsetCommitSize: 1e5}
+	conf = &Config{StartOffset: "newest", BufferSize: 16, ConsumerID: cid, OffsetCommitSize: 1e6}
 
 	md, err := toml.DecodeReader(f, conf)
 	if err != nil {
@@ -191,7 +194,7 @@ func main() {
 	}
 
 	go func() {
-		batchPayload := 0
+		partitionBatchPayload := make(map[int32]int)
 		for msg := range messages {
 			offset := &sarama.OffsetCommitRequest{ConsumerGroup: conf.ConsumerGroup, ConsumerID: conf.ConsumerID, Version: 1}
 			//fmt.Printf("Partition:\t%d\n", msg.Partition)
@@ -205,13 +208,16 @@ func main() {
 					break
 				}
 			}
-			batchPayload += len(msg.Value)
-			if batchPayload > conf.OffsetCommitSize {
-				offset.AddBlock(conf.Topic, msg.Partition, msg.Offset, time.Now().Unix(), "")
-				if _, err := broker.CommitOffset(offset); err != nil {
-					log.Printf("Unable to commit offset: %s", err)
-				} else {
-					batchPayload = 0
+
+			partitionBatchPayload[msg.Partition] += len(msg.Value)
+			for batchPartition, batchPayload := range partitionBatchPayload {
+				if batchPayload > conf.OffsetCommitSize {
+					offset.AddBlock(conf.Topic, msg.Partition, msg.Offset, time.Now().Unix(), "")
+					if _, err := broker.CommitOffset(offset); err != nil {
+						log.Printf("Unable to commit offset: %s", err)
+					} else {
+						partitionBatchPayload[batchPartition] = 0
+					}
 				}
 			}
 		}

@@ -3,7 +3,6 @@ package kafka_httpcat
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -44,7 +43,7 @@ func NewHTTPSender(hosts []string, contextPath string, method string, headers ma
 	}
 }
 
-func (h *HTTPSender) buildBaseRequest(contextPath string, method string, headers map[string][]string, bodyReader io.ReadCloser) *http.Request {
+func (h *HTTPSender) buildBaseRequest(contextPath string, method string, headers map[string][]string, bodyReader *bytes.Reader) *http.Request {
 	var req http.Request
 	req.Method = h.method
 	req.ProtoMajor = 1
@@ -53,12 +52,14 @@ func (h *HTTPSender) buildBaseRequest(contextPath string, method string, headers
 	req.Header = h.headers
 	req.URL = h.parsedContextPath
 	req.URL.Host = h.hosts[h.currentHost]
-	req.Body = bodyReader
+	req.Body = ioutil.NopCloser(bodyReader)
+	req.ContentLength = int64(bodyReader.Len())
 	return &req
 }
 
-func (h *HTTPSender) send(bodyReader io.ReadCloser) error {
+func (h *HTTPSender) send(bodyReader *bytes.Reader) error {
 	req := h.buildBaseRequest(h.contextPath, h.method, h.headers, bodyReader)
+	//io.Copy(os.Stdout, req.Body)
 	if resp, err := h.client.Do(req); err != nil {
 		log.Printf("Not sent!: %s", err)
 		return err
@@ -76,15 +77,14 @@ func (h *HTTPSender) RRSend(body []byte) error {
 
 	for {
 		bodyReader := bytes.NewReader(body)
-		if err := h.send(ioutil.NopCloser(bodyReader)); err != nil {
+		if err := h.send(bodyReader); err != nil {
 			//Round robin
 			h.currentHost = (h.currentHost + 1) % len(h.hosts)
 
-			time.Sleep(100 * time.Millisecond)
-
-			retries++
-			if retries > 10 {
-				return err
+			if retries < 10 {
+				time.Sleep(100 * time.Millisecond)
+			} else {
+				time.Sleep(time.Second)
 			}
 		} else {
 			return nil
