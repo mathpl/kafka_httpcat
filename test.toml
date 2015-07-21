@@ -1,0 +1,16 @@
+Hosts = ["localhost:4242"]
+ContextPath = "/api/put"
+Method = "POST"
+ExpectedResponses = [ 204 ]
+
+BrokerList = ["localhost:9092"]
+
+Topic = "metrics"
+
+Partitions = []
+StartOffset = "newest"
+BufferSize = 16
+ConsumerGroup = "test_group"
+
+[Headers]
+Content-Type = ["gzip"]

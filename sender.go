@@ -1,9 +1,10 @@
 package kafka_httpcat
 
 import (
-	"compress/gzip"
+	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -59,7 +60,7 @@ func (h *HTTPSender) buildBaseRequest(contextPath string, method string, headers
 func (h *HTTPSender) send(bodyReader io.ReadCloser) error {
 	req := h.buildBaseRequest(h.contextPath, h.method, h.headers, bodyReader)
 	if resp, err := h.client.Do(req); err != nil {
-		log.Printf("inot sent!: %s", err)
+		log.Printf("Not sent!: %s", err)
 		return err
 	} else {
 		if _, ok := h.expectedRespCodes[resp.StatusCode]; !ok {
@@ -70,24 +71,22 @@ func (h *HTTPSender) send(bodyReader io.ReadCloser) error {
 	return nil
 }
 
-func (h *HTTPSender) RRSend(bodyReader io.ReadCloser) error {
+func (h *HTTPSender) RRSend(body []byte) error {
 	retries := 0
-	gzreader, err := gzip.NewReader(bodyReader)
-	if err != nil {
-		log.Fatal("Unable to uncompress payload")
-	}
 
 	for {
-		if err := h.send(gzreader); err != nil {
+		bodyReader := bytes.NewReader(body)
+		if err := h.send(ioutil.NopCloser(bodyReader)); err != nil {
 			//Round robin
 			h.currentHost = (h.currentHost + 1) % len(h.hosts)
 
+			time.Sleep(100 * time.Millisecond)
+
 			retries++
 			if retries > 10 {
-				time.Sleep(time.Second)
+				return err
 			}
 		} else {
-			gzreader.Reset(bodyReader)
 			return nil
 		}
 	}
