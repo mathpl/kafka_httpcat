@@ -150,7 +150,6 @@ func main() {
 		go func(pc sarama.PartitionConsumer) {
 			defer wg.Done()
 			for message := range pc.Messages() {
-				fmt.Printf("Got Partition:%d Offset:\t%d\n", message.Partition, message.Offset)
 				messages <- message
 			}
 		}(pc)

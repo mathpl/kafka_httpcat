@@ -1,9 +1,10 @@
 package kafka_httpcat
 
 import (
-	"github.com/Shopify/sarama"
 	"log"
 	"time"
+
+	"github.com/Shopify/sarama"
 )
 
 type OffsetManager struct {
@@ -49,6 +50,9 @@ func NewOffsetManager(brokerList []string, partitionList []int32, topic string, 
 		offsetRequest.AddPartition(topic, partition)
 	}
 
+	om.currentOffsetMap = make(map[int32]int64)
+	om.committedOffsetMap = make(map[int32]int64)
+
 	if resp, err := om.broker.FetchOffset(&offsetRequest); err != nil {
 		log.Fatalf("Unable to fetch stored offset: %s", err)
 	} else {
@@ -78,7 +82,7 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 		if _, err := om.broker.CommitOffset(offsetReq); err != nil {
 			log.Printf("Unable to commit offset: %s", err)
 		} else {
-			log.Printf("Commited partition: %d offset %d", partition, offset)
+			log.Printf("Commited offset for partition: %d offset %d", partition, offset)
 			om.committedOffsetMap[partition] = offset
 		}
 	}
@@ -88,7 +92,7 @@ func (om *OffsetManager) CommitAll() {
 	offsetReq := &sarama.OffsetCommitRequest{ConsumerGroup: om.consumerGroup, ConsumerID: om.consumerID, Version: 1}
 	for partition, offset := range om.currentOffsetMap {
 		offsetReq.AddBlock(om.topic, partition, offset, time.Now().Unix(), "")
-		log.Printf("Committing partition: %d offset %d...", partition, offset)
+		log.Printf("Committing offset for partition: %d offset %d...", partition, offset)
 	}
 
 	if _, err := om.broker.CommitOffset(offsetReq); err != nil {
