@@ -38,8 +38,9 @@ func NewHTTPSender(hosts []string, contextPath string, method string, headers ma
 		for _, expectedRespCode := range expectedRespCodes {
 			respMap[expectedRespCode] = true
 		}
+
 		return &HTTPSender{hosts: hosts, contextPath: contextPath, method: method, headers: headers,
-			parsedContextPath: u, expectedRespCodes: respMap, currentHost: cur, client: &http.Client{}}
+			parsedContextPath: u, expectedRespCodes: respMap, currentHost: cur, client: &http.Client{Timeout: time.Duration(2 * time.Second)}}
 	}
 }
 
@@ -60,6 +61,7 @@ func (h *HTTPSender) buildBaseRequest(contextPath string, method string, headers
 func (h *HTTPSender) send(bodyReader *bytes.Reader) error {
 	req := h.buildBaseRequest(h.contextPath, h.method, h.headers, bodyReader)
 	//io.Copy(os.Stdout, req.Body)
+
 	if resp, err := h.client.Do(req); err != nil {
 		log.Printf("Not sent!: %s", err)
 		return err
@@ -81,9 +83,12 @@ func (h *HTTPSender) RRSend(body []byte) error {
 			//Round robin
 			h.currentHost = (h.currentHost + 1) % len(h.hosts)
 
+			retries++
+
 			if retries < 10 {
 				time.Sleep(100 * time.Millisecond)
 			} else {
+				log.Printf("Backing off sending: %s", err)
 				time.Sleep(time.Second)
 			}
 		} else {
