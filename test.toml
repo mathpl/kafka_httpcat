@@ -11,6 +11,7 @@ Partitions = []
 StartOffset = "newest"
 BufferSize = 16
 ConsumerGroup = "test_group"
+ConsumerID = "test_id"
 
 [Headers]
 Content-Type = ["gzip"]

@@ -123,7 +123,7 @@ func main() {
 		wg       sync.WaitGroup
 	)
 
-	om := kafka_httpcat.NewOffsetManager(conf.BrokerList, conf.Partitions, conf.Topic, conf.ConsumerGroup, conf.ConsumerID, initialOffset, conf.OffsetCommitThreshold)
+	om := kafka_httpcat.NewOffsetManager(conf.BrokerList, partitionList, conf.Topic, conf.ConsumerGroup, conf.ConsumerID, initialOffset, conf.OffsetCommitThreshold)
 
 	go func() {
 		signals := make(chan os.Signal, 1)
@@ -135,7 +135,7 @@ func main() {
 
 	for _, partition := range partitionList {
 		offset := om.GetCurrentOffset(partition)
-		log.Printf("Starting consumer on topic %s partition %s offset %d", conf.Topic, partition, offset)
+		log.Printf("Starting consumer on topic %s partition %d offset %d", conf.Topic, partition, offset)
 		pc, err := c.ConsumePartition(conf.Topic, partition, offset)
 		if err != nil {
 			log.Fatalf("Failed to start consumer for partition %d: %s", partition, err)
