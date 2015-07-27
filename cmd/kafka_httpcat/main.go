@@ -11,7 +11,9 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/Shopify/sarama"
+	"github.com/mathpl/go-tsdmetrics"
 	"github.com/mathpl/kafka_httpcat"
+	"github.com/rcrowley/go-metrics"
 )
 
 var flagConf = flag.String("c", "", "Location of configuration file.")
@@ -89,12 +91,12 @@ func getPartitions(conf *Config, c sarama.Consumer) ([]int32, error) {
 	return conf.Partitions, nil
 }
 
-func generateConsumerLag(r metrics.TaggedRegistry) {
+func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 	valsSent := make(map[string]int64, 0)
 	valsCommitted := make(map[string]int64, 0)
 	valsHWM := make(map[string]int64, 0)
 
-	fn := func(n string, tm metrics.StandardTaggedMetric) {
+	fn := func(n string, tm tsdmetrics.StandardTaggedMetric) {
 		switch n {
 		case "kafka_httpcat.consumer.sent":
 			if m, ok := tm.Metric.(metrics.Gauge); !ok {
@@ -121,7 +123,7 @@ func generateConsumerLag(r metrics.TaggedRegistry) {
 
 	for partition, sentOffset := range valsSent {
 		if partitionSent, ok := valsHWM[partition]; ok {
-			i := r.GetOrRegister("consumer.sent.offset_lag", metrics.Tags{"partition": partition}, metrics.NewGauge())
+			i := r.GetOrRegister("consumer.sent.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				offsetLag := partitionSent - sentOffset
 				m.Update(offsetLag)
@@ -131,7 +133,7 @@ func generateConsumerLag(r metrics.TaggedRegistry) {
 		}
 
 		if partitionCommitted, ok := valsCommitted[partition]; ok {
-			i := r.GetOrRegister("consumer.committed.offset_lag", metrics.Tags{"partition": partition}, metrics.NewGauge())
+			i := r.GetOrRegister("consumer.committed.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				offsetLag := partitionCommitted - sentOffset
 				m.Update(offsetLag)
@@ -158,8 +160,8 @@ func main() {
 		log.Fatal("offset should be `oldest` or `newest`")
 	}
 
-	metricsRegistry := metrics.NewPrefixedTaggedRegistry("kafka_httpcat", metrics.Tags{"topic": conf.Topic})
-	metricsTsdb := metrics.TaggedOpenTSDBConfig{Addr: conf.MetricsReport, Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: metrics.Json}
+	metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": conf.Topic})
+	metricsTsdb := tsdmetrics.TaggedOpenTSDBConfig{Addr: conf.MetricsReport, Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
 
 	log.Printf("Connecting to: %s", conf.BrokerList)
 
@@ -201,7 +203,7 @@ func main() {
 
 		m := metrics.NewGauge()
 		m.Update(pc.HighWaterMarkOffset())
-		metricsRegistry.GetOrRegister("consumer.high_water_mark", metrics.Tags{"partition": fmt.Sprintf("%d", partition), "consumergroup": conf.ConsumerGroup}, m)
+		metricsRegistry.GetOrRegister("consumer.high_water_mark", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition), "consumergroup": conf.ConsumerGroup}, m)
 
 		go func(pc sarama.PartitionConsumer) {
 			<-closing
@@ -218,7 +220,7 @@ func main() {
 		}(pc)
 	}
 
-	go metrics.TaggedOpenTSDBWithConfigAndPreprocessing(metricsTsdb, []func(metrics.TaggedRegistry){generateConsumerLag})
+	go tsdmetrics.TaggedOpenTSDBWithConfigAndPreprocessing(metricsTsdb, []func(tsdmetrics.TaggedRegistry){generateConsumerLag})
 
 	go func() {
 		for msg := range messages {
