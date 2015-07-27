@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/mathpl/go-metrics"
 	"github.com/mathpl/go-tsdmetrics"
+	"github.com/rcrowley/go-metrics"
 )
 
 type OffsetManager struct {
