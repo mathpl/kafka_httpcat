@@ -92,6 +92,7 @@ func getPartitions(conf *Config, c sarama.Consumer) ([]int32, error) {
 
 func generateConsumerLag(r metrics.TaggedRegistry) {
 	valsSent := make(map[string]int64, 0)
+	valsCommitted := make(map[string]int64, 0)
 	valsHWM := make(map[string]int64, 0)
 
 	fn := func(n string, tm metrics.StandardTaggedMetric) {
@@ -101,6 +102,12 @@ func generateConsumerLag(r metrics.TaggedRegistry) {
 				log.Printf("Unexpect metric type.")
 			} else {
 				valsSent[tm.Tags["partition"]] = m.Value()
+			}
+		case "kafka_httpcat.consumer.committed":
+			if m, ok := tm.Metric.(metrics.Gauge); !ok {
+				log.Printf("Unexpect metric type.")
+			} else {
+				valsCommitted[tm.Tags["partition"]] = m.Value()
 			}
 		case "kafka_httpcat.consumer.high_water_mark":
 			if m, ok := tm.Metric.(metrics.Gauge); !ok {
@@ -114,15 +121,26 @@ func generateConsumerLag(r metrics.TaggedRegistry) {
 	r.Each(fn)
 
 	for partition, sentOffset := range valsSent {
-		if partitionHWM, ok := valsHWM[partition]; ok {
-			i := r.GetOrRegister("consumer.offset_lag", metrics.Tags{"partition": partition}, metrics.NewGauge())
+		if partitionSent, ok := valsHWM[partition]; ok {
+			i := r.GetOrRegister("consumer.sent.offset_lag", metrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
-				offsetLag := partitionHWM - sentOffset
+				offsetLag := partitionSent - sentOffset
 				m.Update(offsetLag)
 			} else {
 				log.Print("Unexpected metric type")
 			}
 		}
+
+		if partitionCommitted, ok := valsCommitted[partition]; ok {
+			i := r.GetOrRegister("consumer.committed.offset_lag", metrics.Tags{"partition": partition}, metrics.NewGauge())
+			if m, ok := i.(metrics.Gauge); ok {
+				offsetLag := partitionCommitted - sentOffset
+				m.Update(offsetLag)
+			} else {
+				log.Print("Unexpected metric type")
+			}
+		}
+
 	}
 }
 
