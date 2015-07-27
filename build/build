@@ -12,4 +12,4 @@ cp -a $GOPATH/src/github.com/mathpl/kafka_httpcat/cmd/kafka_httpcat/kafka_httpca
 
 VER=`cat DEBIAN/control | grep Version | awk '{print $NF}'`
 
-dpkg-deb --build ${DESTDIR} kafka_httpcat_${VER}_amd64.deb
+dpkg-deb --build ${DESTDIR} kafka-httpcat_${VER}_amd64.deb
