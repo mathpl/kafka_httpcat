@@ -142,7 +142,7 @@ func main() {
 	}
 
 	metricsRegistry := metrics.NewPrefixedTaggedRegistry("kafka_httpcat", metrics.Tags{"topic": conf.Topic})
-	metricsTsdb := metrics.TaggedOpenTSDBConfig{Addr: conf.MetricsReport, Registry: metricsRegistry, FlushInterval: 1 * time.Second, DurationUnit: time.Second, Format: metrics.Json}
+	metricsTsdb := metrics.TaggedOpenTSDBConfig{Addr: conf.MetricsReport, Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: metrics.Json}
 
 	log.Printf("Connecting to: %s", conf.BrokerList)
 
