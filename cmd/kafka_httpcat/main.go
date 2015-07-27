@@ -160,7 +160,7 @@ func main() {
 		log.Fatal("offset should be `oldest` or `newest`")
 	}
 
-	metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": conf.Topic})
+	metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": conf.Topic, "consumergroup": conf.ConsumerGroup})
 	metricsTsdb := tsdmetrics.TaggedOpenTSDBConfig{Addr: conf.MetricsReport, Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
 
 	log.Printf("Connecting to: %s", conf.BrokerList)
@@ -203,7 +203,7 @@ func main() {
 
 		m := metrics.NewGauge()
 		m.Update(pc.HighWaterMarkOffset())
-		metricsRegistry.GetOrRegister("consumer.high_water_mark", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition), "consumergroup": conf.ConsumerGroup}, m)
+		metricsRegistry.GetOrRegister("consumer.high_water_mark", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}, m)
 
 		go func(pc sarama.PartitionConsumer) {
 			<-closing
