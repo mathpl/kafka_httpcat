@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/Shopify/sarama"
+	"github.com/mathpl/go-metrics"
 	"github.com/mathpl/kafka_httpcat"
 )
 
@@ -88,6 +90,42 @@ func getPartitions(conf *Config, c sarama.Consumer) ([]int32, error) {
 	return conf.Partitions, nil
 }
 
+func generateConsumerLag(r metrics.TaggedRegistry) {
+	valsSent := make(map[string]int64, 0)
+	valsHWM := make(map[string]int64, 0)
+
+	fn := func(n string, tm metrics.StandardTaggedMetric) {
+		switch n {
+		case "kafka_httpcat.consumer.sent":
+			if m, ok := tm.Metric.(metrics.Gauge); !ok {
+				log.Printf("Unexpect metric type.")
+			} else {
+				valsSent[tm.Tags["partition"]] = m.Value()
+			}
+		case "kafka_httpcat.consumer.high_water_mark":
+			if m, ok := tm.Metric.(metrics.Gauge); !ok {
+				log.Printf("Unexpect metric type.")
+			} else {
+				valsHWM[tm.Tags["partition"]] = m.Value()
+			}
+		}
+	}
+
+	r.Each(fn)
+
+	for partition, sentOffset := range valsSent {
+		if partitionHWM, ok := valsHWM[partition]; ok {
+			i := r.GetOrRegister("consumer.offset_lag", metrics.Tags{"partition": partition}, metrics.NewGauge())
+			if m, ok := i.(metrics.Gauge); ok {
+				offsetLag := partitionHWM - sentOffset
+				m.Update(offsetLag)
+			} else {
+				log.Print("Unexpected metric type")
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 	conf := readConf(*flagConf)
@@ -102,6 +140,9 @@ func main() {
 	default:
 		log.Fatal("offset should be `oldest` or `newest`")
 	}
+
+	metricsRegistry := metrics.NewPrefixedTaggedRegistry("kafka_httpcat", metrics.Tags{"topic": conf.Topic})
+	metricsTsdb := metrics.TaggedOpenTSDBConfig{Addr: conf.MetricsReport, Registry: metricsRegistry, FlushInterval: 1 * time.Second, DurationUnit: time.Second, Format: metrics.Json}
 
 	log.Printf("Connecting to: %s", conf.BrokerList)
 
@@ -123,7 +164,7 @@ func main() {
 		wg       sync.WaitGroup
 	)
 
-	om := kafka_httpcat.NewOffsetManager(conf.BrokerList, partitionList, conf.Topic, conf.ConsumerGroup, conf.ConsumerID, initialOffset, conf.OffsetCommitThreshold)
+	om := kafka_httpcat.NewOffsetManager(metricsRegistry, conf.BrokerList, partitionList, conf.Topic, conf.ConsumerGroup, conf.ConsumerID, initialOffset, conf.OffsetCommitThreshold)
 
 	go func() {
 		signals := make(chan os.Signal, 1)
@@ -141,6 +182,10 @@ func main() {
 			log.Fatalf("Failed to start consumer for partition %d: %s", partition, err)
 		}
 
+		m := metrics.NewGauge()
+		m.Update(pc.HighWaterMarkOffset())
+		metricsRegistry.GetOrRegister("consumer.high_water_mark", metrics.Tags{"partition": fmt.Sprintf("%d", partition)}, m)
+
 		go func(pc sarama.PartitionConsumer) {
 			<-closing
 			pc.AsyncClose()
@@ -150,14 +195,16 @@ func main() {
 		go func(pc sarama.PartitionConsumer) {
 			defer wg.Done()
 			for message := range pc.Messages() {
+				m.Update(pc.HighWaterMarkOffset())
 				messages <- message
 			}
 		}(pc)
 	}
 
+	go metrics.TaggedOpenTSDBWithConfigAndPreprocessing(metricsTsdb, []func(metrics.TaggedRegistry){generateConsumerLag})
+
 	go func() {
 		for msg := range messages {
-			//fmt.Printf("Key:\t%s\n", string(msg.Key))
 			sender := kafka_httpcat.NewHTTPSender(conf.Hosts, conf.ContextPath, conf.Method, conf.Headers, conf.ExpectedResponses)
 			for {
 				if err := sender.RRSend(msg.Value); err != nil {
