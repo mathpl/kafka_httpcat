@@ -1,7 +1,7 @@
-Package: kafka_httpcat
+Package: kafka-httpcat
 Priority: optional
 Section: utils
 Maintainer: Mathieu Payeur Levallois <math.pay@gmail.com>
 Architecture: amd64
-Version: 0.1.0-1
+Version: 0.1.0-2
 Description: Kafka consumer to http client

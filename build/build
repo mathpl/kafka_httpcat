@@ -8,7 +8,7 @@ mkdir -p ${DESTDIR}
 
 cp -a DEBIAN ${DESTDIR}/
 mkdir -p ${DESTDIR}/usr/bin
-cp -a $GOPATH/src/github.com/mathpl/kafka_httpcat ${DESTDIR}/usr/bin/
+cp -a $GOPATH/src/github.com/mathpl/kafka_httpcat/cmd/kafka_httpcat/kafka_httpcat ${DESTDIR}/usr/bin/
 
 VER=`cat DEBIAN/control | grep Version | awk '{print $NF}'`
 
