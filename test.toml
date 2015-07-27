@@ -3,6 +3,8 @@ ContextPath = "/api/put"
 Method = "POST"
 ExpectedResponses = [ 204 ]
 
+MetricsReport = "http://localhost:4240/api/put"
+
 BrokerList = ["localhost:9092"]
 
 Topic = "metrics"

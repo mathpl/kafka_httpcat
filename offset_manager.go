@@ -1,10 +1,12 @@
 package kafka_httpcat
 
 import (
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/mathpl/go-metrics"
 )
 
 type OffsetManager struct {
@@ -16,6 +18,8 @@ type OffsetManager struct {
 	currentOffsetMap   map[int32]int64
 	committedOffsetMap map[int32]int64
 	commitThreshold    int64
+
+	metricsRegistry metrics.TaggedRegistry
 }
 
 func GetDefaultSaramaConfig() *sarama.Config {
@@ -33,8 +37,8 @@ func GetDefaultSaramaConfig() *sarama.Config {
 	return saramaConfig
 }
 
-func NewOffsetManager(brokerList []string, partitionList []int32, topic string, consumerGroup string, consumerID string, initialOffset int64, commitThreshold int64) *OffsetManager {
-	om := &OffsetManager{topic: topic, consumerGroup: consumerGroup, consumerID: consumerID, commitThreshold: commitThreshold}
+func NewOffsetManager(metricsRegistry metrics.TaggedRegistry, brokerList []string, partitionList []int32, topic string, consumerGroup string, consumerID string, initialOffset int64, commitThreshold int64) *OffsetManager {
+	om := &OffsetManager{topic: topic, consumerGroup: consumerGroup, consumerID: consumerID, commitThreshold: commitThreshold, metricsRegistry: metricsRegistry}
 
 	var err error
 	if om.client, err = sarama.NewClient(brokerList, GetDefaultSaramaConfig()); err != nil {
@@ -84,7 +88,21 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 		} else {
 			log.Printf("Commited offset for partition: %d offset %d", partition, offset)
 			om.committedOffsetMap[partition] = offset
+
+			i := om.metricsRegistry.GetOrRegister("consumer.committed", metrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
+			if m, ok := i.(metrics.Gauge); ok {
+				m.Update(offset)
+			} else {
+				log.Print("Unexpected metric type")
+			}
 		}
+	}
+
+	i := om.metricsRegistry.GetOrRegister("consumer.sent", metrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
+	if m, ok := i.(metrics.Gauge); ok {
+		m.Update(offset)
+	} else {
+		log.Printf("Unexpected metric type")
 	}
 }
 
@@ -96,6 +114,7 @@ func (om *OffsetManager) CommitAll() {
 	}
 
 	if _, err := om.broker.CommitOffset(offsetReq); err != nil {
+		//FIXME: disconnect on long wait
 		log.Printf("Unable to commit offsets: %s", err)
 	} else {
 		for partition, offset := range om.currentOffsetMap {
