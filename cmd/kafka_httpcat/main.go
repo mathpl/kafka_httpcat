@@ -184,7 +184,7 @@ func main() {
 
 		m := metrics.NewGauge()
 		m.Update(pc.HighWaterMarkOffset())
-		metricsRegistry.GetOrRegister("consumer.high_water_mark", metrics.Tags{"partition": fmt.Sprintf("%d", partition)}, m)
+		metricsRegistry.GetOrRegister("consumer.high_water_mark", metrics.Tags{"partition": fmt.Sprintf("%d", partition), "consumergroup": conf.ConsumerGroup}, m)
 
 		go func(pc sarama.PartitionConsumer) {
 			<-closing
