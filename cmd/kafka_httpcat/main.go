@@ -121,21 +121,21 @@ func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 
 	r.Each(fn)
 
-	for partition, sentOffset := range valsSent {
-		if partitionSent, ok := valsHWM[partition]; ok {
+	for partition, hwmOffset := range valsHWM {
+		if sentOffset, ok := valsSent[partition]; ok {
 			i := r.GetOrRegister("consumer.sent.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
-				offsetLag := partitionSent - sentOffset
+				offsetLag := hwmOffset - sentOffset
 				m.Update(offsetLag)
 			} else {
 				log.Print("Unexpected metric type")
 			}
 		}
 
-		if partitionCommitted, ok := valsCommitted[partition]; ok {
+		if committedOffset, ok := valsCommitted[partition]; ok {
 			i := r.GetOrRegister("consumer.committed.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
-				offsetLag := partitionCommitted - sentOffset
+				offsetLag := hwmOffset - committedOffset
 				m.Update(offsetLag)
 			} else {
 				log.Print("Unexpected metric type")
