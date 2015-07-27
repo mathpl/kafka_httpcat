@@ -11,7 +11,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/Shopify/sarama"
-	"github.com/mathpl/go-metrics"
 	"github.com/mathpl/kafka_httpcat"
 )
 

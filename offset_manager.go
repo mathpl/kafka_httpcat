@@ -7,6 +7,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/mathpl/go-metrics"
+	"github.com/mathpl/go-tsdmetrics"
 )
 
 type OffsetManager struct {
@@ -19,7 +20,7 @@ type OffsetManager struct {
 	committedOffsetMap map[int32]int64
 	commitThreshold    int64
 
-	metricsRegistry metrics.TaggedRegistry
+	metricsRegistry tsdmetrics.TaggedRegistry
 }
 
 func GetDefaultSaramaConfig() *sarama.Config {
@@ -37,7 +38,7 @@ func GetDefaultSaramaConfig() *sarama.Config {
 	return saramaConfig
 }
 
-func NewOffsetManager(metricsRegistry metrics.TaggedRegistry, brokerList []string, partitionList []int32, topic string, consumerGroup string, consumerID string, initialOffset int64, commitThreshold int64) *OffsetManager {
+func NewOffsetManager(metricsRegistry tsdmetrics.TaggedRegistry, brokerList []string, partitionList []int32, topic string, consumerGroup string, consumerID string, initialOffset int64, commitThreshold int64) *OffsetManager {
 	om := &OffsetManager{topic: topic, consumerGroup: consumerGroup, consumerID: consumerID, commitThreshold: commitThreshold, metricsRegistry: metricsRegistry}
 
 	var err error
@@ -89,7 +90,7 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 			log.Printf("Commited offset for partition: %d offset %d", partition, offset)
 			om.committedOffsetMap[partition] = offset
 
-			i := om.metricsRegistry.GetOrRegister("consumer.committed", metrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
+			i := om.metricsRegistry.GetOrRegister("consumer.committed", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				m.Update(offset)
 			} else {
@@ -98,7 +99,7 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 		}
 	}
 
-	i := om.metricsRegistry.GetOrRegister("consumer.sent", metrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
+	i := om.metricsRegistry.GetOrRegister("consumer.sent", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
 	if m, ok := i.(metrics.Gauge); ok {
 		m.Update(offset)
 	} else {
