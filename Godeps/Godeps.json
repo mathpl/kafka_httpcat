@@ -1,0 +1,33 @@
+{
+	"ImportPath": "github.com/mathpl/kafka_httpcat",
+	"GoVersion": "go1.4.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/Shopify/sarama",
+			"Comment": "v1.4.2-15-gc1d582e",
+			"Rev": "c1d582ee1b8d46fc22431b467f398717b580b368"
+		},
+		{
+			"ImportPath": "github.com/eapache/go-resiliency/breaker",
+			"Comment": "v1.0.0-1-ged0319b",
+			"Rev": "ed0319b32e66e3295db52695ba3ee493e823fbfe"
+		},
+		{
+			"ImportPath": "github.com/eapache/queue",
+			"Comment": "v1.0.2",
+			"Rev": "ded5959c0d4e360646dc9e9908cff48666781367"
+		},
+		{
+			"ImportPath": "github.com/golang/snappy/snappy",
+			"Rev": "eaa750b9bf4dcb7cb20454be850613b66cda3273"
+		},
+		{
+			"ImportPath": "github.com/mathpl/go-tsdmetrics",
+			"Rev": "3e9fc0d0ac6cf7271cc390bb22009c8a72ffebfa"
+		},
+		{
+			"ImportPath": "github.com/rcrowley/go-metrics",
+			"Rev": "3e5e593311103d49927c8d2b0fd93ccdfe4a525c"
+		}
+	]
+}
