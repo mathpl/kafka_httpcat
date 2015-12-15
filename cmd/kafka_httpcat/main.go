@@ -75,10 +75,14 @@ func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 
 func commaDelimitedToStringList(s string) []string {
 	list := strings.Split(s, ",")
-	for i, v := range list {
-		list[i] = strings.TrimSpace(v)
+	cleanList := make([]string, 0)
+	for _, v := range list {
+		c := strings.TrimSpace(v)
+		if c != "" {
+			cleanList = append(cleanList, c)
+		}
 	}
-	return list
+	return cleanList
 }
 
 func stringListToHeaderMap(l []string) (map[string][]string, error) {
@@ -126,9 +130,9 @@ func main() {
 			EnvVar: "VERBOSITY",
 		},
 		cli.StringFlag{
-			Name:   "target-host, t",
-			Usage:  "Target host",
-			EnvVar: "TARGET_HOST",
+			Name:   "target-host-list, t",
+			Usage:  "Comma delimited target hosts",
+			EnvVar: "TARGET_HOST_LIST",
 		},
 		cli.StringFlag{
 			Name:   "target-path, p",
@@ -158,7 +162,7 @@ func main() {
 			EnvVar: "KAFKA_BROKER_LIST",
 		},
 		cli.StringFlag{
-			Name:   "kafka-topic, t",
+			Name:   "kafka-topic, T",
 			Usage:  "Kafka topic.",
 			EnvVar: "KAFKA_TOPIC",
 		},
@@ -186,18 +190,12 @@ func main() {
 			EnvVar: "KAFKA_BUFFER_SIZE",
 		},
 		cli.IntFlag{
-			Name:   "kafka-buffer-size, B",
-			Value:  1024,
-			Usage:  "Kafka buffer size.",
-			EnvVar: "KAFKA_BUFFER_SIZE",
-		},
-		cli.IntFlag{
 			Name:   "kafka-commit-batch, c",
 			Value:  1000,
 			Usage:  "Commit consumed messages every X messages.",
 			EnvVar: "KAFKA_COMMIT_BATCH",
 		},
-		cli.IntFlag{
+		cli.StringFlag{
 			Name:   "metrics-report-url, r",
 			Usage:  "Where to send OpenTSDB metrics.",
 			EnvVar: "METRICS_REPORT_URL",
@@ -227,7 +225,9 @@ func main() {
 			log.Fatalf("Unable to parse headers: %s", err)
 		}
 
-		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": c.String("kafka-topic")})
+		targetHosts := commaDelimitedToStringList(c.String("target-host-list"))
+
+		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
 		metricsTsdb := tsdmetrics.TaggedOpenTSDBConfig{Addr: c.String("metrics-report-url"), Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
 
 		log.Printf("Connecting to: %s", c.String("kafka-broker-list"))
@@ -293,7 +293,7 @@ func main() {
 
 		go func() {
 			for msg := range messages {
-				sender := kafka_httpcat.NewHTTPSender(commaDelimitedToStringList(c.String("target-hosts")), c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
+				sender := kafka_httpcat.NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
 				for {
 					if err := sender.RRSend(msg.Value); err != nil {
 						log.Printf("Error send data: %s", err)
