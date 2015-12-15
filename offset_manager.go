@@ -25,7 +25,7 @@ type OffsetManager struct {
 
 func GetDefaultSaramaConfig() *sarama.Config {
 	saramaConfig := sarama.NewConfig()
-	saramaConfig.Net.DialTimeout = 30 * time.Second
+	saramaConfig.Net.DialTimeout = 5 * time.Second
 	saramaConfig.Net.ReadTimeout = 30 * time.Second
 	saramaConfig.Net.WriteTimeout = 30 * time.Second
 	saramaConfig.Metadata.Retry.Max = 3
