@@ -88,11 +88,11 @@ func commaDelimitedToStringList(s string) []string {
 func stringListToHeaderMap(l []string) (map[string][]string, error) {
 	headers := make(map[string][]string, len(l))
 	for _, h := range l {
-		splitHeader := strings.Split(h, ":")
-		if len(splitHeader) != 2 {
+		idx := strings.Index(h, ":")
+		if idx == -1 {
 			return nil, fmt.Errorf("Unable to parse header %s", h)
 		}
-		headers[splitHeader[0]] = strings.Split(splitHeader[1], " ")
+		headers[h[0:idx]] = append(headers[h[0:idx]], strings.TrimSpace(h[idx+1:]))
 	}
 
 	return headers, nil
