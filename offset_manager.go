@@ -80,6 +80,8 @@ func NewOffsetManager(metricsRegistry tsdmetrics.TaggedRegistry, brokerList []st
 }
 
 func (om *OffsetManager) Add(partition int32, offset int64) {
+	tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}
+
 	om.currentOffsetMap[partition] = offset
 	if om.currentOffsetMap[partition]-om.committedOffsetMap[partition] > om.commitThreshold {
 		offsetReq := &sarama.OffsetCommitRequest{ConsumerGroup: om.consumerGroup, ConsumerID: om.consumerID, Version: 1}
@@ -90,7 +92,7 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 			log.Printf("Commited offset for partition: %d offset %d", partition, offset)
 			om.committedOffsetMap[partition] = offset
 
-			i := om.metricsRegistry.GetOrRegister("consumer.committed", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
+			i := om.metricsRegistry.GetOrRegister("consumer.committed", tags, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				m.Update(offset)
 			} else {
@@ -99,7 +101,7 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 		}
 	}
 
-	i := om.metricsRegistry.GetOrRegister("consumer.sent", tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}, metrics.NewGauge())
+	i := om.metricsRegistry.GetOrRegister("consumer.sent", tags, metrics.NewGauge())
 	if m, ok := i.(metrics.Gauge); ok {
 		m.Update(offset)
 	} else {

@@ -200,6 +200,11 @@ func main() {
 			Usage:  "Where to send OpenTSDB metrics.",
 			EnvVar: "METRICS_REPORT_URL",
 		},
+		cli.StringFlag{
+			Name:   "metrics-tags",
+			Usage:  "Comma delimited list of default tags",
+			EnvVar: "METRICS_TAGS",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
@@ -226,9 +231,16 @@ func main() {
 		}
 
 		targetHosts := commaDelimitedToStringList(c.String("target-host-list"))
+		defaultTags, err := tsdmetrics.TagsFromString(c.String("metrics-tags"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defaultTags = defaultTags.AddTags(tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
 
-		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
+		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", defaultTags)
+		tsdmetrics.RegisterTaggedRuntimeMemStats(metricsRegistry)
 		metricsTsdb := tsdmetrics.TaggedOpenTSDBConfig{Addr: c.String("metrics-report-url"), Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
+		go tsdmetrics.TaggedOpenTSDBWithConfigAndPreprocessing(metricsTsdb, []func(tsdmetrics.TaggedRegistry){generateConsumerLag})
 
 		log.Printf("Connecting to: %s", c.String("kafka-broker-list"))
 
@@ -288,8 +300,6 @@ func main() {
 				}
 			}(pc)
 		}
-
-		go tsdmetrics.TaggedOpenTSDBWithConfigAndPreprocessing(metricsTsdb, []func(tsdmetrics.TaggedRegistry){generateConsumerLag})
 
 		go func() {
 			for msg := range messages {
