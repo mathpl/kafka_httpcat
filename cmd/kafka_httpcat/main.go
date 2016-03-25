@@ -312,7 +312,10 @@ func main() {
 					}
 				}
 
-				om.Add(msg.Partition, msg.Offset)
+				if err := om.Add(msg.Partition, msg.Offset); err != nil {
+					log.Printf("Stopping: %s", err)
+					close(closing)
+				}
 			}
 		}()
 

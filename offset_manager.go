@@ -79,7 +79,7 @@ func NewOffsetManager(metricsRegistry tsdmetrics.TaggedRegistry, brokerList []st
 	return om
 }
 
-func (om *OffsetManager) Add(partition int32, offset int64) {
+func (om *OffsetManager) Add(partition int32, offset int64) error {
 	tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}
 
 	om.currentOffsetMap[partition] = offset
@@ -87,7 +87,7 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 		offsetReq := &sarama.OffsetCommitRequest{ConsumerGroup: om.consumerGroup, ConsumerID: om.consumerID, Version: 1}
 		offsetReq.AddBlock(om.topic, partition, offset, time.Now().Unix(), "")
 		if _, err := om.broker.CommitOffset(offsetReq); err != nil {
-			log.Printf("Unable to commit offset: %s", err)
+			return fmt.Errorf("Unable to commit offset: %s", err)
 		} else {
 			log.Printf("Commited offset for partition: %d offset %d", partition, offset)
 			om.committedOffsetMap[partition] = offset
@@ -107,6 +107,8 @@ func (om *OffsetManager) Add(partition int32, offset int64) {
 	} else {
 		log.Printf("Unexpected metric type")
 	}
+
+	return nil
 }
 
 func (om *OffsetManager) CommitAll() {
