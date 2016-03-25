@@ -66,8 +66,14 @@ func (h *HTTPSender) send(bodyReader *bytes.Reader) error {
 		log.Printf("Not sent!: %s", err)
 		return err
 	} else {
+		defer resp.Body.Close()
 		if _, ok := h.expectedRespCodes[resp.StatusCode]; !ok {
-			return fmt.Errorf("Unexpected http code: %d", resp.StatusCode)
+			msg, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("Unexpected http code: %d", resp.StatusCode)
+			} else {
+				return fmt.Errorf("Unexpected http code: %d. %s", string(msg))
+			}
 		}
 	}
 
