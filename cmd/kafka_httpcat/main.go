@@ -202,6 +202,11 @@ func main() {
 			Usage:  "Where to send OpenTSDB metrics.",
 			EnvVar: "METRICS_REPORT_URL",
 		},
+		cli.StringFlag{
+			Name:   "metrics-tags",
+			Usage:  "Comma delimited list of default tags",
+			EnvVar: "METRICS_TAGS",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
@@ -228,6 +233,11 @@ func main() {
 		}
 
 		targetHosts := commaDelimitedToStringList(c.String("target-host-list"))
+		defaultTags, err := tsdmetrics.TagsFromString(c.String("metrics-tags"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defaultTags = defaultTags.AddTags(tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
 
 		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
 		metricsTsdb := tsdmetrics.TaggedOpenTSDB{Addr: c.String("metrics-report-url"), Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
@@ -288,6 +298,7 @@ func main() {
 					m.Update(pc.HighWaterMarkOffset())
 					messages <- message
 				}
+				log.Fatalf("Error reading messages from partition %d", partition)
 			}(pc)
 		}
 
@@ -304,7 +315,10 @@ func main() {
 					}
 				}
 
-				om.Add(msg.Partition, msg.Offset)
+				if err := om.Add(msg.Partition, msg.Offset); err != nil {
+					log.Printf("Stopping: %s", err)
+					close(closing)
+				}
 			}
 		}()
 

@@ -100,6 +100,7 @@ func (h *HTTPSender) RRSend(body []byte) error {
 				time.Sleep(100 * time.Millisecond)
 			} else {
 				log.Printf("Backing off sending: %s", err)
+				log.Printf("%s\n", string(body))
 				time.Sleep(time.Second)
 			}
 		} else {
