@@ -298,6 +298,7 @@ func main() {
 					m.Update(pc.HighWaterMarkOffset())
 					messages <- message
 				}
+				log.Fatalf("Error reading messages from partition %d", partition)
 			}(pc)
 		}
 
