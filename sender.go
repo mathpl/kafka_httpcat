@@ -3,6 +3,7 @@ package kafka_httpcat
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -63,6 +64,10 @@ func (h *HTTPSender) send(bodyReader *bytes.Reader) error {
 	//io.Copy(os.Stdout, req.Body)
 
 	if resp, err := h.client.Do(req); err != nil {
+		if err == io.EOF {
+			log.Printf("Skipping presumable bad message: %s", err)
+			return nil
+		}
 		log.Printf("Not sent!: %s", err)
 		return err
 	} else {

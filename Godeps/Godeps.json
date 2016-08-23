@@ -27,7 +27,7 @@
 		},
 		{
 			"ImportPath": "github.com/mathpl/go-tsdmetrics",
-			"Rev": "68879e8240b63faf87f5d06bb51b8d827b669197"
+			"Rev": "i2caf6316c7cfc74ed491818fc7c842f3ad97f34d"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
