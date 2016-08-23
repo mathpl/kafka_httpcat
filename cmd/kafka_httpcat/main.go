@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/Shopify/sarama"
 	"github.com/codegangsta/cli"
 	"github.com/mathpl/go-tsdmetrics"
@@ -24,25 +26,25 @@ func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 	valsCommitted := make(map[string]int64, 0)
 	valsHWM := make(map[string]int64, 0)
 
-	fn := func(n string, tm tsdmetrics.StandardTaggedMetric) {
+	fn := func(n string, tm tsdmetrics.TaggedMetric) {
 		switch n {
 		case "kafka_httpcat.consumer.sent":
-			if m, ok := tm.Metric.(metrics.Gauge); !ok {
+			if m, ok := tm.GetMetric().(metrics.Gauge); !ok {
 				log.Printf("Unexpect metric type.")
 			} else {
-				valsSent[tm.Tags["partition"]] = m.Value()
+				valsSent[tm.GetTags()["partition"]] = m.Value()
 			}
 		case "kafka_httpcat.consumer.committed":
-			if m, ok := tm.Metric.(metrics.Gauge); !ok {
+			if m, ok := tm.GetMetric().(metrics.Gauge); !ok {
 				log.Printf("Unexpect metric type.")
 			} else {
-				valsCommitted[tm.Tags["partition"]] = m.Value()
+				valsCommitted[tm.GetTags()["partition"]] = m.Value()
 			}
 		case "kafka_httpcat.consumer.high_water_mark":
-			if m, ok := tm.Metric.(metrics.Gauge); !ok {
+			if m, ok := tm.GetMetric().(metrics.Gauge); !ok {
 				log.Printf("Unexpect metric type.")
 			} else {
-				valsHWM[tm.Tags["partition"]] = m.Value()
+				valsHWM[tm.GetTags()["partition"]] = m.Value()
 			}
 		}
 	}
@@ -237,10 +239,8 @@ func main() {
 		}
 		defaultTags = defaultTags.AddTags(tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
 
-		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", defaultTags)
-		tsdmetrics.RegisterTaggedRuntimeMemStats(metricsRegistry)
-		metricsTsdb := tsdmetrics.TaggedOpenTSDBConfig{Addr: c.String("metrics-report-url"), Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
-		go tsdmetrics.TaggedOpenTSDBWithConfigAndPreprocessing(metricsTsdb, []func(tsdmetrics.TaggedRegistry){generateConsumerLag})
+		metricsRegistry := tsdmetrics.NewPrefixedTaggedRegistry("kafka_httpcat", tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
+		metricsTsdb := tsdmetrics.TaggedOpenTSDB{Addr: c.String("metrics-report-url"), Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
 
 		log.Printf("Connecting to: %s", c.String("kafka-broker-list"))
 
@@ -298,8 +298,11 @@ func main() {
 					m.Update(pc.HighWaterMarkOffset())
 					messages <- message
 				}
+				log.Fatalf("Error reading messages from partition %d", partition)
 			}(pc)
 		}
+
+		go metricsTsdb.RunWithPreprocessing(context.Background(), []func(tsdmetrics.TaggedRegistry){generateConsumerLag})
 
 		go func() {
 			for msg := range messages {
