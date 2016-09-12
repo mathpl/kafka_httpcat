@@ -40,7 +40,7 @@ func NewHTTPSender(hosts []string, contextPath string, method string, headers ma
 		}
 
 		return &HTTPSender{hosts: hosts, contextPath: contextPath, method: method, headers: headers,
-			parsedContextPath: u, expectedRespCodes: respMap, currentHost: cur, client: &http.Client{Timeout: time.Duration(2 * time.Second)}}
+			parsedContextPath: u, expectedRespCodes: respMap, currentHost: cur, client: &http.Client{Timeout: time.Duration(15 * time.Second)}}
 	}
 }
 
