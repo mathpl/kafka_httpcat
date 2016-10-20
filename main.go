@@ -53,7 +53,7 @@ func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 
 	for partition, hwmOffset := range valsHWM {
 		if sentOffset, ok := valsSent[partition]; ok {
-			i := r.GetOrRegister("consumer.sent.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
+			i := r.GetOrRegister("kafka_httpcat.consumer.sent.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				offsetLag := hwmOffset - sentOffset
 				m.Update(offsetLag)
@@ -63,7 +63,7 @@ func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 		}
 
 		if committedOffset, ok := valsCommitted[partition]; ok {
-			i := r.GetOrRegister("consumer.committed.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
+			i := r.GetOrRegister("kafka_httpcat.consumer.committed.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				offsetLag := hwmOffset - committedOffset
 				m.Update(offsetLag)
@@ -223,13 +223,9 @@ func main() {
 		defaultTags = defaultTags.AddTags(tsdmetrics.Tags{"topic": c.String("kafka-topic"), "consumergroup": c.String("kafka-consumer-group")})
 
 		rootRegistry := tsdmetrics.NewSegmentedTaggedRegistry("", defaultTags, nil)
-
-		goMetrics := tsdmetrics.NewSegmentedTaggedRegistry("", tsdmetrics.Tags{"j_app": "http_kafkacat"}, rootRegistry)
-		tsdmetrics.RegisterTaggedRuntimeMemStats(goMetrics)
-
+		tsdmetrics.RegisterTaggedRuntimeMemStats(rootRegistry)
 		metricsRegistry := tsdmetrics.NewSegmentedTaggedRegistry("kafka_httpcat", nil, rootRegistry)
-
-		metricsTsdb := tsdmetrics.TaggedOpenTSDB{Addr: c.String("metrics-report-url"), Registry: metricsRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
+		metricsTsdb := tsdmetrics.TaggedOpenTSDB{Addr: c.String("metrics-report-url"), Registry: rootRegistry, FlushInterval: 15 * time.Second, DurationUnit: time.Millisecond, Format: tsdmetrics.Json}
 
 		log.Printf("Connecting to: %s", c.String("kafka-broker-list"))
 
@@ -247,8 +243,11 @@ func main() {
 			return fmt.Errorf("offset should be `oldest` or `newest`")
 		}
 
+		brokerList := strings.Split(c.String("kafka-broker-list"), ",")
+		topicList := strings.Split(c.String("kafka-topic"), ",")
+
 		// Init consumer, consume errors & messages
-		consumer, err := cluster.NewConsumer(strings.Split(c.String("kafka-broker-list"), ","), c.String("kafka-consumer-group"), strings.Split(c.String("kafka-topic"), ","), config)
+		consumer, err := cluster.NewConsumer(brokerList, c.String("kafka-consumer-group"), topicList, config)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -268,10 +267,24 @@ func main() {
 		batchSize := int64(c.Int("kafka-commit-batch"))
 
 		go func() {
+			for {
+				hwms := consumer.HighWaterMarks()
+				for _, hwm := range hwms {
+					for partition, offset := range hwm {
+						tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}
+						m := metricsRegistry.GetOrRegister("consumer.high_water_mark", tags, metrics.NewGauge())
+						m.(metrics.Gauge).Update(offset)
+					}
+				}
+				time.Sleep(5 * time.Second)
+			}
+		}()
+
+		go func() {
 			sender := NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
 			for msg := range consumer.Messages() {
 				if err := sender.RRSend(msg.Value); err != nil {
-					log.Printf("Error send data: %s", err)
+					log.Printf("Error send data: %s\n", err)
 				}
 
 				tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", msg.Partition)}
@@ -282,6 +295,7 @@ func main() {
 					consumer.MarkOffset(msg, "")
 					c := metricsRegistry.GetOrRegister("consumer.committed", tags, metrics.NewGauge())
 					c.(metrics.Gauge).Update(msg.Offset)
+					log.Printf("Commited offset partition:%d offset:%d\n", msg.Partition, msg.Offset)
 				}
 			}
 		}()
@@ -295,8 +309,10 @@ func main() {
 		signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM)
 
 		<-wait
+		consumer.CommitOffsets()
+
 		if err := consumer.Close(); err != nil {
-			fmt.Println("Failed to close consumer: ", err)
+			fmt.Printf("Failed to close consumer: %s\n", err)
 		}
 
 		return nil
