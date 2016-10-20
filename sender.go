@@ -1,4 +1,4 @@
-package kafka_httpcat
+package main
 
 import (
 	"bytes"
@@ -88,6 +88,7 @@ func (h *HTTPSender) RRSend(body []byte) error {
 		if err := h.send(bodyReader); err != nil {
 			log.Printf("Backing off sending: %s", err)
 			return nil
+
 			//Round robin
 			h.currentHost = (h.currentHost + 1) % len(h.hosts)
 
