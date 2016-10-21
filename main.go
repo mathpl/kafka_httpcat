@@ -252,9 +252,15 @@ func main() {
 			log.Fatal(err)
 		}
 
+		wait := make(chan os.Signal, 1)
+		signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM)
+
 		go func() {
 			for err := range consumer.Errors() {
 				fmt.Printf("Error: %s\n", err.Error())
+
+				// Abort all
+				wait <- syscall.SIGTERM
 			}
 		}()
 
@@ -266,19 +272,16 @@ func main() {
 
 		batchSize := int64(c.Int("kafka-commit-batch"))
 
-		go func() {
-			for {
-				hwms := consumer.HighWaterMarks()
-				for _, hwm := range hwms {
-					for partition, offset := range hwm {
-						tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}
-						m := metricsRegistry.GetOrRegister("consumer.high_water_mark", tags, metrics.NewGauge())
-						m.(metrics.Gauge).Update(offset)
-					}
+		hwmUpdate := func(r tsdmetrics.TaggedRegistry) {
+			hwms := consumer.HighWaterMarks()
+			for _, hwm := range hwms {
+				for partition, offset := range hwm {
+					tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", partition)}
+					m := metricsRegistry.GetOrRegister("consumer.high_water_mark", tags, metrics.NewGauge())
+					m.(metrics.Gauge).Update(offset)
 				}
-				time.Sleep(5 * time.Second)
 			}
-		}()
+		}
 
 		go func() {
 			sender := NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
@@ -301,12 +304,10 @@ func main() {
 		}()
 
 		collectFn := tsdmetrics.RuntimeCaptureFn
+		collectFn = append(collectFn, hwmUpdate)
 		collectFn = append(collectFn, generateConsumerLag)
 
 		go metricsTsdb.RunWithPreprocessing(context.Background(), collectFn)
-
-		wait := make(chan os.Signal, 1)
-		signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM)
 
 		<-wait
 		consumer.CommitOffsets()
