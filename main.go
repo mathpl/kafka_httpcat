@@ -21,6 +21,8 @@ import (
 
 var version = "0.4"
 
+var maxLag = 0
+
 func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 	valsSent := make(map[string]int64, 0)
 	valsCommitted := make(map[string]int64, 0)
@@ -51,12 +53,18 @@ func generateConsumerLag(r tsdmetrics.TaggedRegistry) {
 
 	r.Each(fn)
 
+	var maxLag int64
+
 	for partition, hwmOffset := range valsHWM {
 		if sentOffset, ok := valsSent[partition]; ok {
 			i := r.GetOrRegister("kafka_httpcat.consumer.sent.offset_lag", tsdmetrics.Tags{"partition": partition}, metrics.NewGauge())
 			if m, ok := i.(metrics.Gauge); ok {
 				offsetLag := hwmOffset - sentOffset
 				m.Update(offsetLag)
+
+				if offsetLag > maxLag {
+					maxLag = offsetLag
+				}
 			} else {
 				log.Print("Unexpected metric type")
 			}
@@ -158,6 +166,12 @@ func main() {
 			Usage:  "Comma delimited list of expected HTTP status",
 			EnvVar: "HTTP_EXPECTED_STATUSES",
 		},
+		cli.IntFlag{
+			Name:   "discard-ratio",
+			Value:  0,
+			Usage:  "Ratio of discarded messages. 0 => none, 1 => 1 in 2, 2 => 2 in 3",
+			EnvVar: "DISCARD_RATIO",
+		},
 		cli.StringFlag{
 			Name:   "kafka-broker-list, b",
 			Usage:  "Comma delimited kafka broker list.",
@@ -184,6 +198,12 @@ func main() {
 			Value:  "newest",
 			Usage:  "Kafka offset to start with (newest or oldest)",
 			EnvVar: "KAFKA_START_OFFSET",
+		},
+		cli.IntFlag{
+			Name:   "max-offset-lag",
+			Value:  0,
+			Usage:  "Max offset lag before aborting",
+			EnvVar: "MAX_OFFSET_LAG",
 		},
 		cli.IntFlag{
 			Name:   "kafka-commit-batch, c",
@@ -229,6 +249,11 @@ func main() {
 
 		log.Printf("Connecting to: %s", c.String("kafka-broker-list"))
 
+		discard := c.Int("discard-ratio")
+		if discard != 0 {
+			log.Printf("Disarding all but every %d messages", discard)
+		}
+
 		// Init config
 		config := cluster.NewConfig()
 		config.Consumer.Return.Errors = true
@@ -239,6 +264,9 @@ func main() {
 			config.Consumer.Offsets.Initial = sarama.OffsetOldest
 		case "newest":
 			config.Consumer.Offsets.Initial = sarama.OffsetNewest
+
+			// Only when starting with newest
+			maxLag = c.Int("max-lag")
 		default:
 			return fmt.Errorf("offset should be `oldest` or `newest`")
 		}
@@ -285,7 +313,14 @@ func main() {
 
 		go func() {
 			sender := NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
+
+			discardCounter := 0
 			for msg := range consumer.Messages() {
+				discardCounter++
+				if discard != 0 && discardCounter%discard != 0 {
+					continue
+				}
+
 				if err := sender.RRSend(msg.Value); err != nil {
 					log.Printf("Error send data: %s\n", err)
 				}
