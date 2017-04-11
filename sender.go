@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -86,8 +87,14 @@ func (h *HTTPSender) RRSend(body []byte) error {
 	for {
 		bodyReader := bytes.NewReader(body)
 		if err := h.send(bodyReader); err != nil {
-			log.Printf("Backing off sending: %s", err)
-			return nil
+			// Network error
+			if uerr, ok := err.(*url.Error); ok {
+				if nerr, ok := uerr.Err.(*net.OpError); ok {
+					log.Printf("Network error, backing off sending: %s", nerr)
+					time.Sleep(time.Second)
+					continue
+				}
+			}
 
 			//Round robin
 			h.currentHost = (h.currentHost + 1) % len(h.hosts)
