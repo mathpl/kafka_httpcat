@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -89,6 +90,12 @@ func (h *HTTPSender) RRSend(body []byte) error {
 		if err := h.send(bodyReader); err != nil {
 			// Network error
 			if uerr, ok := err.(*url.Error); ok {
+				if uerr.Err == io.EOF {
+					log.Printf("Invalid body, skipping: %s", err)
+					log.Printf("%s\n", string(body))
+					return nil
+				}
+
 				if nerr, ok := uerr.Err.(*net.OpError); ok {
 					log.Printf("Network error, backing off sending: %s", nerr)
 					time.Sleep(time.Second)
