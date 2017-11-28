@@ -1,10 +1,9 @@
-hash: 3c5bbdfd31c4c9d1c101a86bbbf5049fe57fbd33d253acce1677949a842528db
-updated: 2016-10-20T03:56:26.229490655-04:00
+hash: e6259c67bcddae25f52212c996b1b6c0f39a510831ede4a4c45ae8aa586991da
+updated: 2017-10-20T03:56:26.229490655-04:00
 imports:
 - name: github.com/bsm/sarama-cluster
   version: f5faed7d69e89983b631e354705c1a0b4385968d
-  repo: git@github.com:mathpl/sarama-cluster.git
-  vcs: git
+  repo: https://github.com/mathpl/sarama-cluster.git
 - name: github.com/codegangsta/cli
   version: a14d7d367bc02b1f57d88de97926727f2d936387
 - name: github.com/davecgh/go-spew
@@ -28,9 +27,7 @@ imports:
 - name: github.com/rcrowley/go-metrics
   version: ab2277b1c5d15c3cba104e9cbddbdfc622df5ad8
 - name: github.com/Shopify/sarama
-  version: 9e4b926b99686504723b1963a72331ab4172a6e9
-  repo: git@github.com:mathpl/sarama.git
-  vcs: git
+  version: b0e729b8e95a2ad143570643cf3e9e1bf78a8ff5
 - name: github.com/Sirupsen/logrus
   version: 4b6ea7319e214d98c938f12692336f7ca9348d6b
 - name: golang.org/x/net

@@ -1,12 +1,9 @@
 package: github.com/mathpl/kafka_httpcat
 import:
 - package: github.com/Shopify/sarama
-  vcs: git
-  repo: git@github.com:mathpl/sarama.git
-  version: 9e4b926b99686504723b1963a72331ab4172a6e9
+  version: b0e729b8e95a2ad143570643cf3e9e1bf78a8ff5
 - package: github.com/bsm/sarama-cluster
-  vcs: git
-  repo: git@github.com:mathpl/sarama-cluster.git
+  repo: https://github.com/mathpl/sarama-cluster.git
   version: f5faed7d69e89983b631e354705c1a0b4385968d
 - package: github.com/codegangsta/cli
   version: ^1.18.1
