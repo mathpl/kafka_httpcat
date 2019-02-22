@@ -139,6 +139,12 @@ func main() {
 			Usage:  "verbosity (0-5)",
 			EnvVar: "VERBOSITY",
 		},
+		cli.IntFlag{
+			Name:   "sender-count",
+			Value:  4,
+			Usage:  "Number of senders",
+			EnvVar: "SENDER_COUNT",
+		},
 		cli.StringFlag{
 			Name:   "target-host-list, t",
 			Usage:  "Comma delimited target hosts",
@@ -311,9 +317,9 @@ func main() {
 			}
 		}
 
-		go func() {
-			sender := NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
+		metricsChan := make(chan []byte, 100)
 
+		go func() {
 			discardCounter := 0
 			for msg := range consumer.Messages() {
 				discardCounter++
@@ -321,9 +327,7 @@ func main() {
 					continue
 				}
 
-				if err := sender.RRSend(msg.Value); err != nil {
-					log.Printf("Error send data: %s\n", err)
-				}
+				metricsChan <- msg.Value
 
 				tags := tsdmetrics.Tags{"partition": fmt.Sprintf("%d", msg.Partition)}
 				s := metricsRegistry.GetOrRegister("consumer.sent", tags, metrics.NewGauge())
@@ -337,6 +341,19 @@ func main() {
 				}
 			}
 		}()
+
+		senderCount := c.Int("sender-count")
+		for i := 0; i < senderCount; i++ {
+			sender := NewHTTPSender(targetHosts, c.String("target-path"), c.String("method"), httpHeaders, expectedStatuses)
+
+			go func(s *HTTPSender, c chan []byte) {
+				for val := range c {
+					if err := s.RRSend(val); err != nil {
+						log.Printf("Error send data: %s\n", err)
+					}
+				}
+			}(sender, metricsChan)
+		}
 
 		collectFn := tsdmetrics.RuntimeCaptureFn
 		collectFn = append(collectFn, hwmUpdate)
